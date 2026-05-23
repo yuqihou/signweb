@@ -15,16 +15,13 @@
         .panel { background: #fff; border: 1px solid #dee2e6; border-radius: 12px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); display: flex; flex-direction: column; }
         .panel-title { font-size: 16px; font-weight: bold; color: #495057; margin-bottom: 15px; text-align: left; border-bottom: 2px solid #e9ecef; padding-bottom: 5px; }
         
-        /* Video Input Section */
         #video-container { width: 100%; height: 260px; background: #1e1e1e; border-radius: 8px; overflow: hidden; }
         canvas { width: 100%; height: 100%; object-fit: cover; }
         #live-tracker { margin-top: 15px; padding: 12px; background: #f1f3f5; border-radius: 8px; font-size: 16px; font-weight: 600; color: #495057; }
         
-        /* Minimalist Dialogue Plain Text Stream (No Bubbles) */
         .chat-stream { width: 100%; height: 320px; background: #ffffff; border-radius: 8px; border: 1px solid #dee2e6; box-sizing: border-box; padding: 20px; text-align: left; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
         .msg { font-size: 18px; line-height: 1.5; word-wrap: break-word; font-weight: 500; }
         
-        /* Colors to strictly differentiate users */
         .msg-customer { color: #0d6efd; align-self: flex-start; text-align: left; }
         .msg-clerk { color: #198754; align-self: flex-start; text-align: left; }
         
@@ -74,11 +71,9 @@
 
 <script>
     let model, webcam, maxPredictions;
-    let lastSpokenText = "";
-    let isSpeaking = false;
     let recognition;
     let isListening = false;
-    let lastGestureTime = 0; 
+    let lastGestureTime = 0; // The master time anchor
 
     async function initAI() {
         document.getElementById('live-tracker').innerText = "AI Vision Pipeline: Loading neural weights...";
@@ -126,7 +121,6 @@
         const tracker = document.getElementById('live-tracker');
         const currentTime = Date.now();
 
-        // 🟢 CRITICAL CHANGE 1: Must hit at least 95% confidence AND must NOT be the neutral class
         if (highestProbability >= 0.95 && highestClassName.toLowerCase() !== "neutral") {
             let speechText = "";
             const gesture = highestClassName.toLowerCase();
@@ -140,29 +134,26 @@
 
             tracker.innerText = `Current Gesture: ${highestClassName} (${(highestProbability*100).toFixed(0)}%)`;
 
-            // 🟢 CRITICAL CHANGE 2: Time Cooldown (2.5 seconds). Allows repeating sentences freely.
-            if ((currentTime - lastGestureTime > 2500) && !isSpeaking && speechText !== "") {
-                lastSpokenText = speechText;
-                lastGestureTime = currentTime;
+            // ⚡ COMPLETELY UNLOCKED LOGIC: No more isSpeaking boolean locks!
+            // If the gesture is detected at 95% and 2.2 seconds have passed since the last push
+            if ((currentTime - lastGestureTime > 2200) && speechText !== "") {
+                lastGestureTime = currentTime; // Reset the clock instantly
                 
-                // 1. Output plain text to the conversation board
+                // 1. Instantly write to the chat board
                 appendChatMessage("Customer", speechText);
 
-                // 🟢 CRITICAL CHANGE 3: This line controls the Rocky Voice Output!
-                isSpeaking = true;
+                // 2. Clear speech queue and speak immediately
+                window.speechSynthesis.cancel(); 
                 const msg = new SpeechSynthesisUtterance(speechText);
                 msg.lang = 'en-US';
-                msg.rate = 0.85; 
-                msg.onend = () => { isSpeaking = false; };
+                msg.rate = 0.9; 
                 window.speechSynthesis.speak(msg);
             }
         } else if (highestClassName.toLowerCase() === "neutral") {
-            // Quietly display scanning states for the neutral pose
             tracker.innerText = "Current Gesture: Neutral (Scanning...)";
         }
     }
 
-    // 🟢 CRITICAL CHANGE 4: Plain minimal text style generator
     function appendChatMessage(sender, text) {
         const stream = document.getElementById('chat-stream');
         const msgDiv = document.createElement('div');
