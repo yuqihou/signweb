@@ -8,15 +8,22 @@
     <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8.3/dist/teachablemachine-image.min.js"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f8f9fa; margin: 0; padding: 20px; text-align: center; color: #212529; }
-        .container { max-width: 900px; margin: 0 auto; background: white; padding: 30px; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+        .container { max-width: 950px; margin: 0 auto; background: white; padding: 30px; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
         h1 { color: #0d6efd; margin-bottom: 5px; font-weight: 700; }
         .subtitle { color: #6c757d; font-size: 15px; margin-bottom: 25px; text-transform: uppercase; letter-spacing: 1px; }
-        .app-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px; }
-        .panel { background: #fff; border: 1px solid #dee2e6; border-radius: 12px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+        .app-grid { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 20px; margin-top: 20px; }
+        .panel { background: #fff; border: 1px solid #dee2e6; border-radius: 12px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); display: flex; flex-direction: column; }
         .panel-title { font-size: 16px; font-weight: bold; color: #495057; margin-bottom: 15px; text-align: left; border-bottom: 2px solid #e9ecef; padding-bottom: 5px; }
-        #video-container { width: 100%; height: 260px; background: #1e1e1e; border-radius: 8px; overflow: hidden; }
+        #video-container { width: 100%; height: 320px; background: #1e1e1e; border-radius: 8px; overflow: hidden; }
         canvas { width: 100%; height: 100%; object-fit: cover; }
-        .display-box { width: 100%; min-height: 120px; background: #f8f9fa; border-radius: 8px; box-sizing: border-box; padding: 15px; text-align: left; font-size: 18px; color: #212529; overflow-y: auto; height: 260px; }
+        
+        /* Apple-Translation style conversation flow */
+        .chat-stream { width: 100%; height: 320px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e9ecef; box-sizing: border-box; padding: 15px; text-align: left; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+        .msg { padding: 10px 14px; border-radius: 12px; max-width: 85%; font-size: 17px; line-height: 1.4; word-wrap: break-word; }
+        .msg-customer { background: #e7f1ff; color: #0c4128; border-left: 5px solid #0d6efd; align-self: flex-start; }
+        .msg-clerk { background: #d1e7dd; color: #0f5132; border-right: 5px solid #198754; align-self: flex-end; text-align: right; }
+        .msg-meta { font-size: 11px; text-transform: uppercase; font-weight: bold; margin-bottom: 3px; display: block; color: #6c757d; }
+        
         .btn-group { margin: 25px 0 10px 0; }
         button { background: #0d6efd; color: white; border: none; padding: 14px 35px; font-size: 16px; border-radius: 8px; cursor: pointer; font-weight: 600; transition: background 0.2s; }
         button:hover { background: #0b5ed7; }
@@ -24,26 +31,29 @@
         .mic-btn:hover { background: #157347; }
         .mic-btn.listening { background: #dc3545; animation: pulse 1.5s infinite; }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
-        .log-box { margin-top: 20px; padding: 15px; background: #e9ecef; border-radius: 8px; text-align: left; font-size: 15px; min-height: 40px; }
+        .log-box { margin-top: 20px; padding: 15px; background: #e9ecef; border-radius: 8px; text-align: left; font-size: 15px; min-height: 24px; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <h1>SignBridge</h1>
-    <div class="subtitle">Two-Way Assistive Communication System (Retail Prototype)</div>
+    <div class="subtitle">Two-Way Assistive Communication System</div>
 
     <div class="app-grid">
         <div class="panel">
-            <div class="panel-title">Customer Side: Sign Language to Speech</div>
+            <div class="panel-title">Video Input (Customer Camera)</div>
             <div id="video-container">
                 <canvas id="canvas" width="400" height="300"></canvas>
             </div>
         </div>
+
         <div class="panel">
-            <div class="panel-title">Clerk Side: Speech to Text</div>
-            <div id="display-speech" class="display-box">
-                Speech recognition is idle. Press the mic button and speak to communicate with the customer.
+            <div class="panel-title">Translation Dialogue Stream</div>
+            <div id="chat-stream" class="chat-stream">
+                <div style="color: #bcbebf; text-align: center; margin: auto 0; font-style: italic; font-size: 15px;">
+                    Dialogue history is empty. Start AI or use Microphone to begin translation flow.
+                </div>
             </div>
         </div>
     </div>
@@ -54,7 +64,7 @@
     </div>
 
     <div id="status-log" class="log-box">
-        <strong>System Status:</strong> Standing by. Please start the AI system and grant camera/microphone permissions.
+        <strong>System Log:</strong> Standby. Please activate permissions to deploy translation pipelines.
     </div>
 </div>
 
@@ -64,27 +74,27 @@
     let isSpeaking = false;
     let recognition;
     let isListening = false;
+    let lastGestureTime = 0; // Prevent spamming sentences
 
+    // 1. LAUNCH CAMERA AND LOADING GRAPH GRAPHS
     async function initAI() {
         const logBox = document.getElementById('status-log');
-        logBox.innerHTML = "<strong>System Status:</strong> Loading AI models, please wait...";
-
-        const modelURL = './model.json';
-        const metadataURL = './metadata.json';
+        logBox.innerHTML = "<strong>System Log:</strong> Syncing local neural weight files...";
 
         try {
-            model = await tmImage.load(modelURL, metadataURL);
+            model = await tmImage.load('./model.json', './metadata.json');
             maxPredictions = model.getTotalClasses();
 
-            const flip = true; 
-            webcam = new tmImage.Webcam(400, 300, flip); 
+            webcam = new tmImage.Webcam(400, 300, true); 
             await webcam.setup(); 
             await webcam.play();
             
-            logBox.innerHTML = "<strong>System Status:</strong> AI Model loaded successfully. Camera active.";
+            logBox.innerHTML = "<strong>System Log:</strong> AI vision pipeline successfully mounted.";
+            // Clear default placeholder text in chat stream
+            document.getElementById('chat-stream').innerHTML = "";
             window.requestAnimationFrame(loop);
         } catch (error) {
-            logBox.innerHTML = "<strong>Error:</strong> Failed to initialize AI model or camera.";
+            logBox.innerHTML = "<strong>Error:</strong> Check camera availability or binary weights.";
             console.error(error);
         }
     }
@@ -95,6 +105,7 @@
         window.requestAnimationFrame(loop);
     }
 
+    // 2. REAL-TIME AI PREDICTION & CHAT append & TTS AUDIO OUT
     async function predict() {
         const prediction = await model.predict(webcam.canvas);
         const canvas = document.getElementById("canvas");
@@ -112,82 +123,87 @@
         }
 
         const logBox = document.getElementById('status-log');
+        const currentTime = Date.now();
 
-        if (highestProbability > 0.85 && highestClassName.toLowerCase() !== "neutral") {
-            let displayText = "";
+        if (highestProbability > 0.88 && highestClassName.toLowerCase() !== "neutral") {
             let speechText = "";
-
             const gesture = highestClassName.toLowerCase();
-            // Perfectly matches your actual labels in the image!
-            if (gesture === "hello") {
-                displayText = "Customer signs: Hello";
-                speechText = "Hello.";
-            } else if (gesture === "my") {
-                displayText = "Customer signs: My";
-                speechText = "My";
-            } else if (gesture === "name(is)") {
-                displayText = "Customer signs: Name is";
-                speechText = "name is";
-            } else if (gesture === "skye") {
-                displayText = "Customer signs: Skye";
-                speechText = "Skye.";
-            } else if (gesture === "credit card") {
-                displayText = "Customer signs: Credit Card";
-                speechText = "Can I pay by credit card?";
-            } else if (gesture === "thank you") {
-                displayText = "Customer signs: Thank you";
-                speechText = "Thank you.";
-            }
 
-            logBox.innerHTML = `<strong>Last Gesture Detected:</strong> ${displayText} (Confidence: ${(highestProbability*100).toFixed(0)}%)`;
+            // Match exact strings with flawless execution
+            if (gesture === "hello") speechText = "Hello.";
+            else if (gesture === "my") speechText = "My";
+            else if (gesture === "name(is)") speechText = "name is";
+            else if (gesture === "skye") speechText = "Skye.";
+            else if (gesture === "credit card") speechText = "Can I pay by credit card?";
+            else if (gesture === "thank you") speechText = "Thank you.";
 
-            if (speechText !== lastSpokenText && !isSpeaking) {
+            logBox.innerHTML = `<strong>Active Track:</strong> Caption triggered for [${highestClassName}] at ${(highestProbability*100).toFixed(0)}% confidence.`;
+
+            // If it's a new gesture and at least 2.5 seconds have passed since last sentence (prevents frame loops)
+            if (speechText !== lastSpokenText && (currentTime - lastGestureTime > 2500) && !isSpeaking) {
                 lastSpokenText = speechText;
+                lastGestureTime = currentTime;
+                
+                // Append text inside the chat box natively (Customer Side)
+                appendChatMessage("Customer", speechText);
+
+                // Execute absolute local speech engine
                 isSpeaking = true;
                 const msg = new SpeechSynthesisUtterance(speechText);
                 msg.lang = 'en-US';
+                msg.rate = 0.9; // Slightly slower for crisp clear presentation acoustics
                 msg.onend = () => { isSpeaking = false; };
                 window.speechSynthesis.speak(msg);
             }
         } else if (highestClassName.toLowerCase() === "neutral") {
-            if(!logBox.innerHTML.includes("Customer signs")) {
-                logBox.innerHTML = "<strong>System Status:</strong> Watching for sign language inputs...";
+            if(!logBox.innerHTML.includes("Caption triggered")) {
+                logBox.innerHTML = "<strong>Active Track:</strong> Scanning hands frames...";
             }
         }
     }
 
+    // APPENDS BALLOONS INTO THE DIALOGUE CONTAINER
+    function appendChatMessage(sender, text) {
+        const stream = document.getElementById('chat-stream');
+        const msgDiv = document.createElement('div');
+        
+        if (sender === "Customer") {
+            msgDiv.className = "msg msg-customer";
+            msgDiv.innerHTML = `<span class="msg-meta">Customer (Sign)</span>${text}`;
+        } else {
+            msgDiv.className = "msg msg-clerk";
+            msgDiv.innerHTML = `<span class="msg-meta">Clerk (Speech)</span>${text}`;
+        }
+        
+        stream.appendChild(msgDiv);
+        stream.scrollTop = stream.scrollHeight; // Auto scroll to the lowest item
+    }
+
+    // 3. MIC STT AUDIO PIPELINE
     function initSpeechRecognition() {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SpeechRecognition) {
-            document.getElementById('display-speech').innerText = "Speech recognition is not supported in this browser.";
+            alert("Speech interface missing. Please test within Chrome/Edge desktop versions.");
             return;
         }
 
         recognition = new SpeechRecognition();
-        recognition.continuous = true;
-        recognition.interimResults = true;
+        recognition.continuous = false; // Capture block chunks
+        recognition.interimResults = false; // Only push final locked strings
         recognition.lang = 'en-US';
 
         recognition.onstart = () => {
             isListening = true;
-            document.getElementById('mic-btn').innerText = "Turn Off Microphone";
+            document.getElementById('mic-btn').innerText = "Stop Recording";
             document.getElementById('mic-btn').classList.add('listening');
-            document.getElementById('display-speech').innerHTML = "<i>Listening... Speak clearly into your microphone.</i>";
         };
 
         recognition.onresult = (event) => {
-            let interimTranscript = '';
-            let finalTranscript = '';
-            for (let i = event.resultIndex; i < event.results.length; ++i) {
-                if (event.results[i].isFinal) {
-                    finalTranscript += event.results[i][0].transcript;
-                } else {
-                    interimTranscript += event.results[i][0].transcript;
-                }
+            const resultText = event.results[0][0].transcript;
+            if(resultText.trim() !== "") {
+                // Append text inside the chat box natively (Clerk Side)
+                appendChatMessage("Clerk", resultText);
             }
-            document.getElementById('display-speech').innerHTML = 
-                `<span style="color: #0d6efd; font-weight: bold;">Clerk Says:</span> <br>` + 
-                `<span style="font-size: 20px;">${finalTranscript || interimTranscript}</span>`;
         };
 
         recognition.onend = () => {
