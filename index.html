@@ -20,12 +20,17 @@
         canvas { width: 100%; height: 100%; object-fit: cover; }
         #live-tracker { margin-top: 15px; padding: 12px; background: #f1f3f5; border-radius: 8px; font-size: 16px; font-weight: 600; color: #495057; }
         
-        /* Apple/Rocky Style Dialogue Stream */
-        .chat-stream { width: 100%; height: 320px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e9ecef; box-sizing: border-box; padding: 15px; text-align: left; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
-        .msg { padding: 12px 16px; border-radius: 12px; max-width: 85%; font-size: 17px; line-height: 1.4; word-wrap: break-word; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
-        .msg-customer { background: #e7f1ff; color: #0c4128; border-left: 5px solid #0d6efd; align-self: flex-start; }
-        .msg-clerk { background: #d1e7dd; color: #0f5132; border-right: 5px solid #198754; align-self: flex-end; text-align: right; }
-        .msg-meta { font-size: 11px; text-transform: uppercase; font-weight: bold; margin-bottom: 4px; display: block; color: #6c757d; }
+        /* Minimalist Dialogue Plain Text Stream (No Bubbles) */
+        .chat-stream { width: 100%; height: 320px; background: #ffffff; border-radius: 8px; border: 1px solid #dee2e6; box-sizing: border-box; padding: 20px; text-align: left; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
+        .msg { font-size: 18px; line-height: 1.5; word-wrap: break-word; font-weight: 500; }
+        
+        /* Colors to strictly differentiate users */
+        .msg-customer { color: #0d6efd; align-self: flex-start; text-align: left; }
+        .msg-clerk { color: #198754; align-self: flex-start; text-align: left; }
+        
+        .msg-label { font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; margin-right: 8px; display: inline-block; padding: 2px 6px; border-radius: 4px; }
+        .label-customer { background: #e7f1ff; color: #0d6efd; }
+        .label-clerk { background: #d1e7dd; color: #198754; }
         
         .btn-group { margin: 25px 0 10px 0; }
         button { background: #0d6efd; color: white; border: none; padding: 14px 35px; font-size: 16px; border-radius: 8px; cursor: pointer; font-weight: 600; transition: background 0.2s; }
@@ -75,7 +80,6 @@
     let isListening = false;
     let lastGestureTime = 0; 
 
-    // 1. START CAMERA & INITIALIZE
     async function initAI() {
         document.getElementById('live-tracker').innerText = "AI Vision Pipeline: Loading neural weights...";
         try {
@@ -87,7 +91,6 @@
             await webcam.play();
             
             document.getElementById('live-tracker').innerText = "AI Vision Pipeline: Scanning frames...";
-            // Clear placeholder text
             const placeholder = document.getElementById('placeholder-text');
             if(placeholder) placeholder.remove();
             
@@ -104,7 +107,6 @@
         window.requestAnimationFrame(loop);
     }
 
-    // 2. REAL-TIME PREDICTION, CHAT APPEND & AUDIO SPEECH (ROCKY MODE)
     async function predict() {
         const prediction = await model.predict(webcam.canvas);
         const canvas = document.getElementById("canvas");
@@ -124,12 +126,11 @@
         const tracker = document.getElementById('live-tracker');
         const currentTime = Date.now();
 
-        // When confidence is high and gesture isn't neutral
-        if (highestProbability > 0.88 && highestClassName.toLowerCase() !== "neutral") {
+        // 🟢 CRITICAL CHANGE 1: Must hit at least 95% confidence AND must NOT be the neutral class
+        if (highestProbability >= 0.95 && highestClassName.toLowerCase() !== "neutral") {
             let speechText = "";
             const gesture = highestClassName.toLowerCase();
 
-            // Flawlessly matching your exact labels from Teachable Machine
             if (gesture === "hello") speechText = "Hello.";
             else if (gesture === "my") speechText = "My";
             else if (gesture === "name(is)") speechText = "name is";
@@ -139,49 +140,48 @@
 
             tracker.innerText = `Current Gesture: ${highestClassName} (${(highestProbability*100).toFixed(0)}%)`;
 
-            // ROCKY MODE: Trigger only if it's a new gesture phrase and 2.5 seconds have passed
-            if (speechText !== lastSpokenText && (currentTime - lastGestureTime > 2500) && !isSpeaking) {
+            // 🟢 CRITICAL CHANGE 2: Time Cooldown (2.5 seconds). Allows repeating sentences freely.
+            if ((currentTime - lastGestureTime > 2500) && !isSpeaking && speechText !== "") {
                 lastSpokenText = speechText;
                 lastGestureTime = currentTime;
                 
-                // 1. Instantly append gesture into the Dialogue Stream box on the right
+                // 1. Output plain text to the conversation board
                 appendChatMessage("Customer", speechText);
 
-                // 2. Instantly execute the Rocky Audio Vocalizer
+                // 🟢 CRITICAL CHANGE 3: This line controls the Rocky Voice Output!
                 isSpeaking = true;
                 const msg = new SpeechSynthesisUtterance(speechText);
                 msg.lang = 'en-US';
-                msg.rate = 0.85; // Crispy and clear acoustic pace
+                msg.rate = 0.85; 
                 msg.onend = () => { isSpeaking = false; };
                 window.speechSynthesis.speak(msg);
             }
         } else if (highestClassName.toLowerCase() === "neutral") {
-            tracker.innerText = "Current Gesture: Scanning hands...";
+            // Quietly display scanning states for the neutral pose
+            tracker.innerText = "Current Gesture: Neutral (Scanning...)";
         }
     }
 
-    // APPEND CHAT BUBBLES
+    // 🟢 CRITICAL CHANGE 4: Plain minimal text style generator
     function appendChatMessage(sender, text) {
         const stream = document.getElementById('chat-stream');
         const msgDiv = document.createElement('div');
+        msgDiv.className = `msg ${sender === 'Customer' ? 'msg-customer' : 'msg-clerk'}`;
         
         if (sender === "Customer") {
-            msgDiv.className = "msg msg-customer";
-            msgDiv.innerHTML = `<span class="msg-meta">Customer (Sign Language)</span>${text}`;
+            msgDiv.innerHTML = `<span class="msg-label label-customer">Customer</span> ${text}`;
         } else {
-            msgDiv.className = "msg msg-clerk";
-            msgDiv.innerHTML = `<span class="msg-meta">Clerk (Speech Input)</span>${text}`;
+            msgDiv.innerHTML = `<span class="msg-label label-clerk">Clerk</span> ${text}`;
         }
         
         stream.appendChild(msgDiv);
-        stream.scrollTop = stream.scrollHeight; // Auto-scroll to lowest message
+        stream.scrollTop = stream.scrollHeight; 
     }
 
-    // 3. CLERK SPEECH RECORDING PIPELINE
     function initSpeechRecognition() {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SpeechRecognition) {
-            alert("Speech API missing. Try running this on desktop Chrome or Edge.");
+            alert("Speech API missing.");
             return;
         }
 
